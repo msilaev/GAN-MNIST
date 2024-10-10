@@ -16,6 +16,9 @@ class DatasetMNIST(Dataset):  # inherit abstract class - 'Dataset'
         # be carefull for converting dtype to np.uint8 (Unsigned integer (0 to 255))
         # in this example, We use ToTensor(), so we define the numpy array like (H, W, C)
 
+        x = self.data.iloc[index, 1:].values.astype(np.uint8)
+        print(x.shape)
+
         image = self.data.iloc[index, 1:].values.astype(np.uint8).reshape((28, 28, 1))
         label = self.data.iloc[index, 0]
         if self.transform is not None:

@@ -43,7 +43,7 @@ class Generator(nn.Module):
             nn.BatchNorm2d(ngf * 4),
             nn.ReLU(True),
             # 3*2 - 2*1 + 4 = 8
-            # state size. (ngf*4) x 8 x 8
+            # state size. (ngf*4) x 8 x 8pr
             nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
@@ -97,11 +97,12 @@ class Discriminator(nn.Module):
             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(ndf * 4, 1, 3, 1, 0, bias=False),
-            nn.Sigmoid()
+            nn.Conv2d(ndf * 4, 1, 3, 1, 0, bias=False)
         )
 
-    def forward(self, input, labels):
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, input_x, labels):
 
         label_embedding = self.label_emb(labels)
 
@@ -112,6 +113,14 @@ class Discriminator(nn.Module):
                                                  self.image_size,
                                                  self.image_size)
 
-        d_input = torch.cat((input, label_embedding), 1)
+        d_input = torch.cat((input_x, label_embedding), 1)
 
-        return self.main(d_input)
+        x= self.main(d_input)
+
+        #print("d", x)
+
+        #input()
+
+        x = self.sigmoid(x)
+
+        return x

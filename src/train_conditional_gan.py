@@ -1,94 +1,191 @@
-import itertools
-
 import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
 from torchvision import datasets
-from torchviz import make_dot
 
 import torch
-import pandas as pd
 import matplotlib.pyplot as plt
+import os
 
 from models.conditional_gan import Generator, Discriminator, weights_init
 from dataset_batch import DatasetMNIST
 from classifier import Classifier
 from plot_results import plot_results
+from dataset_factory import generate_train_fake, generate_test_train_real
 
-def generate_train_test(dataset, generator, num_classes):
-    # ------------
-    # Generate test data set
-    # ------------
+def validation(batch_size, real_label, num_classes, adversarial_loss, device,
+               generator, discriminator, dataloader_test):
+
+    discriminator.eval()
     generator.eval()
-    generated_samples = []
-    generated_labels = []
-    # num_samples_per_class = 1000
 
-    for label in range(num_classes):
-        noise = torch.randn(num_samples_per_class,
-                            latent_dim, 1, 1,
-                            device=device)
+    #d_loss_arr.append(d_loss.item())
+    #g_loss_arr.append(g_loss.item())
 
-        gen_labels = torch.full((num_samples_per_class,),
-                                label, dtype=torch.long,
-                                device=device)
+    d_loss_avg = 0
+    g_loss_avg = 0
 
-        gen_images = generator(noise, gen_labels).detach().cpu().numpy()
+    for i, (imgs, label_num) in enumerate(dataloader_test, 0):
 
-        gen_images = gen_images.reshape(num_samples_per_class, -1)
+        real_imgs = imgs.to(device)
+        labels = label_num.to(device)
 
-        generated_samples.append(gen_images)
-        generated_labels.extend([label] * num_samples_per_class)
+        label = torch.full((batch_size,), real_label, dtype=torch.float, device=device)
 
-    generated_samples = np.vstack(generated_samples)
-    generated_labels = np.array(generated_labels)
+        valid_labels = labels
+        fake_labels = torch.randint(0, num_classes, (batch_size,), device=device)
 
-    # ------------
-    # Form training set from real images
-    # ------------
+        real_output = discriminator(real_imgs, valid_labels).view(-1)
 
-    batch_size = 1  # suggested default, size of the batches
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        real_loss = adversarial_loss(real_output, label)
 
-    real_images = []
-    real_labels = []
+        noise = torch.randn(batch_size, latent_dim, 1, 1, device=device)
 
-    for i, (imgs, label_num) in enumerate(dataloader, 0):
-        real_images.append(imgs[0])
-        real_labels.append(label_num[0])
+        fake_imgs = generator(noise, fake_labels)
+        label.fill_(fake_label)
 
-    real_images = np.array(real_images)
-    real_labels = np.array(real_labels)
+        fake_output = discriminator(fake_imgs.detach(), fake_labels).view(-1)
+        fake_loss = adversarial_loss(fake_output, label)
 
-    train_indices = np.arange(0, 42000)
+        d_loss = (real_loss + fake_loss) / 2
 
-    real_train_images = real_images[0:42000]
-    real_train_images = real_train_images.reshape(real_train_images.shape[0], -1)
-    real_train_labels = real_labels[0:42000]
+        label.fill_(real_label)
+        fake_output = discriminator(fake_imgs, fake_labels).view(-1)
 
-    return real_train_labels, real_train_images, generated_labels, generated_samples
+        g_loss = adversarial_loss(fake_output, label)
+
+        d_loss_avg += d_loss.item() /len(dataloader_test)
+        g_loss_avg += g_loss.item() / len(dataloader_test)
+
+    return d_loss_avg, g_loss_avg
+
+def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
+          adversarial_loss, device, optimizer_G, optimizer_D,
+          generator, discriminator, dataloader_train, dataloader_test, loss_filename):
+
+    #n_epochs = 1
+    iteration = 0
+
+    print("n_epochs", n_epochs)
+
+    # print(epoch)
+    discriminator.train()
+    generator.train()
+
+    for epoch in range(n_epochs):
+
+        print("epoch", epoch)
+
+        d_loss_avg, g_loss_avg = validation(batch_size, real_label, num_classes, adversarial_loss, device,
+               generator, discriminator, dataloader_test)
+
+        ############################3333
+
+        loss_filename_full = os.path.join("logs", loss_filename)
+
+
+        with open(loss_filename_full, "a") as f_write_loss:
+
+                loss_str = f"{epoch}, {d_loss_avg.item()}, {g_loss_avg.item()}\n"
+
+                f_write_loss.write(loss_str)
+
+        #print(
+        #    "[Epoch: %d/%d] [Batch: %d/%d] [D loss: %f] [G loss: %f]"
+        #    % (epoch + 1, n_epochs, i + 1, len(dataloader), d_loss.item(), g_loss.item())
+        #)
+
+        #################################
+
+        for i, (imgs, label_num) in enumerate(dataloader_train, 0):
+
+            iteration += 1
+
+            print(f"iteration {i} / {len(dataloader_train)}")
+
+            real_imgs = imgs.to(device)
+            labels = label_num.to(device)
+
+            # ------------
+            # Train Discriminator
+            # ------------
+            optimizer_D.zero_grad()
+
+            label = torch.full((batch_size,), real_label, dtype=torch.float, device=device)
+
+            valid_labels = labels
+            fake_labels = torch.randint(0, num_classes, (batch_size,), device=device)
+
+            real_output = discriminator(real_imgs, valid_labels).view(-1)
+
+            real_loss = adversarial_loss(real_output, label)
+            real_loss.backward()
+
+            D_real = real_output.mean().item()
+
+            noise = torch.randn(batch_size, latent_dim, 1, 1, device=device)
+
+            fake_imgs = generator(noise, fake_labels)
+            label.fill_(fake_label)
+
+            fake_output = discriminator(fake_imgs.detach(), fake_labels).view(-1)
+            fake_loss = adversarial_loss(fake_output, label)
+
+            fake_loss.backward()
+            D_fake = fake_output.mean().item()
+
+            d_loss = (real_loss + fake_loss) / 2
+
+            optimizer_D.step()
+
+            # ------------
+            # Train Generator
+            # ------------
+            optimizer_G.zero_grad()
+            label.fill_(real_label)
+            fake_output = discriminator(fake_imgs, fake_labels).view(-1)
+
+            g_loss = adversarial_loss(fake_output, label)
+            g_loss.backward()
+            D_G_fake = fake_output.mean().item()
+            optimizer_G.step()
+
+            if ((iteration + 1) % 500) == 0:
+
+                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                      % (epoch, n_epochs, i, len(dataloader),
+                         d_loss.item(), g_loss.item(), D_real, D_fake, D_G_fake))
+
+
+    return generator, discriminator
 
 
 if __name__ == '__main__':
 
     channels = 1
     img_size = 28
-    img_shape = (channels, img_size, img_size)  # (Channels, Image Size(H), Image Size(W))
-    latent_dim = 100  # suggested default. dimensionality of the latent space
+    img_shape = (channels, img_size, img_size)
+    latent_dim = 100
 
     num_classes = 10
     image_size = 28
-    batch_size = 64  # suggested default, size of the batches
+    batch_size = 64
 
-    batch_size = 64  # suggested default, size of the batches
-    b1 = 0.5
+    batch_size = 64
+    b1 = 0.9
     b2 = 0.999
     lr = 0.0002
 
     real_label = 1
     fake_label = 0
+    num_samples_per_class = 5000
+
+    path_generator = os.path.join("models", 'generator.pth')
+    path_discriminator = os.path.join("models", 'discriminator.pth')
+
+    loss_filename = "loss_conditional_gan.txt"
 
     ngpu = 1
     device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
@@ -97,8 +194,12 @@ if __name__ == '__main__':
         print("CUDA!")
         Tensor = torch.cuda.FloatTensor
     else:
+        print("NO CUDA!")
         Tensor = torch.FloatTensor
 
+    # --------
+    # Define loss function, initialize generator and discriminator
+    # --------
     adversarial_loss = torch.nn.BCELoss()
 
     generator = Generator(num_classes = num_classes).to(device)
@@ -108,36 +209,34 @@ if __name__ == '__main__':
                                   image_size = image_size).to(device)
     discriminator.apply(weights_init)
 
-    train = pd.read_csv('../data/train.csv')
-    dataset = DatasetMNIST(file_path = '../data/train.csv',
-                           transform = transforms.Compose( [transforms.ToTensor(),
-                            transforms.Normalize([0.5], [0.5])]))
+    #train_dataset = DatasetMNIST(file_path = '../data/train.csv',
+    #                       transform = transforms.Compose( [transforms.ToTensor(),
+    #                        transforms.Normalize([0.5], [0.5])]))
 
-    # --------
-    # calculate accuracy of KNN classifier with untrained generator
-    # --------
-    num_samples_per_class = 1000
+    #test_dataset = DatasetMNIST(file_path = '../data/test.csv',
+    #                       transform = transforms.Compose( [transforms.ToTensor(),
+    #                        transforms.Normalize([0.5], [0.5])]))
 
-    real_train_labels, real_train_images, generated_labels, generated_samples = \
-        generate_train_test(dataset, generator, num_classes)
-
-    Classifier(real_train_labels, real_train_images, generated_labels, generated_samples)
 
     # ------------
-    # Alternatively we can download dataset from PyTorch
+    # Download MNIST train and test dataset from PyTorch
     # ------------
 
-    #transform = transforms.Compose([
-    #    transforms.Resize(image_size),
-    #    transforms.ToTensor(),
-    #    transforms.Normalize((0.5,), (0.5,))
-    #])
+    transform = transforms.Compose([
+        transforms.Resize(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
 
-    #mnist_data = datasets.MNIST(root='data', train=True, download=True, transform=transform)
-    #dataloader = DataLoader(mnist_data, batch_size=batch_size, shuffle=True)
+    train_dataset = datasets.MNIST(root='data', train=True,
+                                   download=True, transform=transform)
 
+    test_dataset = datasets.MNIST(root='data', train=False,
+                                  download=True, transform=transform)
 
-    dataloader = DataLoader( dataset, batch_size=batch_size, shuffle=True, drop_last = True)
+    dataloader_train = DataLoader( train_dataset, batch_size=batch_size, shuffle=True, drop_last = True)
+    dataloader_test = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+
     optimizer_G = torch.optim.Adam(generator.parameters(), lr = lr, betas = (b1, b2))
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr = lr, betas = (b1, b2))
 
@@ -147,176 +246,88 @@ if __name__ == '__main__':
     # --------
     # plot untrained generator output
     # --------
-    real_batch = next(iter(dataloader))
+    real_batch = next(iter(dataloader_test))
     real_imgs = real_batch[0]
     real_labels = real_batch[1]
+
     with torch.no_grad():
         fake = generator(fixed_noise, fixed_labels).detach().cpu()
+
     fname = "../results_conditional_gan/dataset_im_start.png"
+
     plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
 
     # --------
-    # save the computation graph in folder
+    # train GAN
     # --------
+    n_epochs = 100
 
-    #fake1 = generator(fixed_noise)
-    #dot = make_dot(fake1, params=dict(generator.named_parameters()),
-    #               show_attrs=False, show_saved=False)
-    #dot.render("computation_graph_dicrim", format="png")
+    generator,  discriminator = \
+            train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
+            adversarial_loss, device, optimizer_G, optimizer_D,
+            generator, discriminator,  dataloader_train, dataloader_test, loss_filename)
 
-    # --------
-    # train loop
-    # --------
-    n_epochs = 10
-    iteration = 0
+    torch.save(generator.state_dict(), path_generator)
+    torch.save(discriminator.state_dict(), path_discriminator)
 
-    d_loss_arr = []
-    g_loss_arr = []
+    #f_write_loss = open(loss_filename, "w")
 
-    for epoch in range(n_epochs):
-        for i, (imgs, label_num) in enumerate(dataloader, 0):
-
-            iteration += 1
-
-            # Adversarial ground truths
-            valid = Variable(Tensor(imgs.size(0), 1).fill_(real_label),
-                             requires_grad=False)
-
-            # imgs.size(0) == batch_size(1 batch) == 64, *TEST_CODE
-            fake = Variable(Tensor(imgs.size(0), 1).fill_(fake_label),
-                            requires_grad=False)
-
-            #######################################
-            real_imgs = imgs.to(device)
-            labels = label_num.to(device)
-
-            # ------------
-            # Train Discriminator
-            # ------------
-            discriminator.zero_grad()
-
-            label = torch.full((batch_size,), real_label, dtype=torch.float, device=device)
-
-            valid_labels = labels
-            fake_labels = torch.randint(0, num_classes, (batch_size,), device=device)
-
-            real_output = discriminator(real_imgs, valid_labels).view(-1)
-
-            #print(real_output.shape, real_imgs.shape)
-
-            real_loss = adversarial_loss(real_output, label)
-            real_loss.backward()
-            D_x = real_output.mean().item()
-
-            noise = torch.randn(batch_size, latent_dim, 1, 1, device=device)
-            #noise = torch.randn(batch_size, latent_dim, device=device)
-
-            fake_imgs = generator(noise, fake_labels)
-            label.fill_(fake_label)
-
-            fake_output = discriminator(fake_imgs.detach(), fake_labels).view(-1)
-
-            fake_loss = adversarial_loss(fake_output, label)
-            fake_loss.backward()
-            D_G_z1 = fake_output.mean().item()
-
-            d_loss = (real_loss + fake_loss) / 2
-
-            optimizer_D.step()
-
-            # ------------
-            # Train Generator
-            # ------------
-            #optimizer_G.zero_grad()
-            generator.zero_grad()
-            label.fill_(real_label)
-            fake_output = discriminator(fake_imgs, fake_labels).view(-1)
-
-            g_loss = adversarial_loss(fake_output, label)
-            g_loss.backward()
-            D_G_z2 = fake_output.mean().item()
-            optimizer_G.step()
-
-            d_loss_arr.append(d_loss.item())
-            g_loss_arr.append(g_loss.item())
-
-            if ((iteration + 1) %500) == 0:
-
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                          % (epoch, n_epochs, i, len(dataloader),
-                             d_loss.item(), g_loss.item(), D_x, D_G_z1, D_G_z2))
-
-                #nrows = 1
-                #ncols = 6
-
-                #fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(8, 8))
-                #plt.suptitle('EPOCH : {} | BATCH(ITERATION) : {}'.format(epoch + 1, i + 1))
-
-                with torch.no_grad():
-                    fake = generator(fixed_noise, fixed_labels).detach().cpu()
-
-                #for nrow, ncol in itertools.product(range(ncols), range(nrows)):
-
-                #    axes[ncol][nrow].imshow(fake.permute(0, 2, 3, 1)[ncol*nrow + nrow], cmap='gray')
-                #    axes[ncol][nrow].axis('off')
-                #    axes[ncol][nrow].set_title('fake, ' + str(fixed_labels[ncol*nrow + nrow].item()))
-                #plt.show(block = False)
-                #plt.pause(2)
-
-                ncols = 6
-                fig, axes = plt.subplots(ncols=ncols, figsize=(8, 8))
-                plt.suptitle('EPOCH : {} | BATCH(ITERATION) : {}'.format(epoch + 1, i + 1))
-
-                for ncol in range(ncols):
-
-                    axes[ncol].imshow(fake.permute(0, 2, 3, 1)[ncol], cmap='gray')
-                    axes[ncol].axis('off')
-                    axes[ncol].set_title('fake, ' + str(fixed_labels[ncol].item()))
-
-                plt.show(block = False)
-                plt.pause(2)
-                plt.close()
-        print(
-            "[Epoch: %d/%d] [Batch: %d/%d] [D loss: %f] [G loss: %f]"
-            % (epoch + 1, n_epochs, i + 1, len(dataloader), d_loss.item(), g_loss.item())
-        )
-
-    # --------
-    # plot trained generator output
-    # --------
-    real_batch = next(iter(dataloader))
-    real_imgs = real_batch[0]
-    real_labels = real_batch[1]
-    with torch.no_grad():
-        fake = generator(fixed_noise, fixed_labels).detach().cpu()
-    fname = "../results_conditional_gan/dataset_im_fin.png"
-    plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
+    #for ind, i  in enumerate(d_loss_arr):
+    #        loss_str = f"{ind}, {d_loss_arr[ind]}, {g_loss_arr[ind]}\n"
+    #        f_write_loss.write(loss_str)
+    #f_write_loss.close()
 
     # --------
     # plot learning curves
     # --------
-    d_loss_arr = np.array(d_loss_arr)
-    g_loss_arr = np.array(g_loss_arr)
+    #d_loss_arr = np.array(d_loss_arr)
+    #g_loss_arr = np.array(g_loss_arr)
+    #g_loss_arr_1 = - np.log(1 - np.exp(-g_loss_arr))
 
-    plt.figure(figsize=(10,5))
-    plt.title("Generator and Discriminator Loss During Training")
-    plt.plot(g_loss_arr,label="G")
-    plt.plot(d_loss_arr,label="D")
-    plt.xlabel("iterations")
-    plt.ylabel("Loss")
-    plt.legend()
+    #plt.figure(figsize=(10, 5))
+    #plt.title("Generator and Discriminator Loss During Training")
+    #plt.plot(g_loss_arr_1, label="G")
+    #plt.plot(d_loss_arr, label="D")
+    #plt.xlabel("iterations")
+    #plt.ylabel("Loss")
+    #plt.grid(True)  # Add grid lines
+    #plt.legend()
 
-    plt.savefig ("../results_conditional_gan/loss.png")
-    plt.show()
+    #plt.savefig("../results_conditional_gan/loss.png")
+    #plt.show()
 
     # --------
-    # calculate accuracy of KNN classifier with trained generator
+    # Plot trained generator output
     # --------
-    num_samples_per_class = 1000
+    real_batch = next(iter(dataloader_test))
+    real_imgs = real_batch[0]
+    real_labels = real_batch[1]
 
-    real_train_labels, real_train_images, generated_labels, generated_samples = \
-        generate_train_test(dataset, generator, num_classes)
+    with torch.no_grad():
+        fake = generator(fixed_noise, fixed_labels).detach().cpu()
 
-    Classifier(real_train_labels, real_train_images, generated_labels, generated_samples)
+    fname = "../results_conditional_gan/dataset_im_fin.png"
+    plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
+
+    # --------
+    # Ganerate fake dataset using trained generator
+    # --------
+
+    #generated_labels, generated_samples = \
+    #    generate_train_fake(device, generator, num_classes, latent_dim, num_samples_per_class)
+
+    # --------
+    # Calculate accuracy of KNN classifier with trained generator
+    # --------
+
+    #accuracy_generated \
+    #    = Classifier(real_test_labels, real_test_images, generated_labels, generated_samples, num_classes)
+
+    #print(f"Error rate using trained generator dataset = {100*(1- accuracy_generated):.2f}%")
+
+    #arithmetics(generator, latent_dim, device, 5, 4)
+
+
+
 
 
