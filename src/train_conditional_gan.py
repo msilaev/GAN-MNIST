@@ -1,28 +1,18 @@
-import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-from torch.autograd import Variable
-
 from torchvision import datasets
 
 import torch
-import matplotlib.pyplot as plt
 import os
 
 from models.conditional_gan import Generator, Discriminator, weights_init
-from dataset_batch import DatasetMNIST
-from classifier import Classifier
-from plot_results import plot_results
-from dataset_factory import generate_train_fake, generate_test_train_real
+from plot_conditional_numbers import plot_results
 
 def validation(batch_size, real_label, num_classes, adversarial_loss, device,
                generator, discriminator, dataloader_test):
 
     discriminator.eval()
     generator.eval()
-
-    #d_loss_arr.append(d_loss.item())
-    #g_loss_arr.append(g_loss.item())
 
     d_loss_avg = 0
     g_loss_avg = 0
@@ -63,9 +53,9 @@ def validation(batch_size, real_label, num_classes, adversarial_loss, device,
 
 def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
           adversarial_loss, device, optimizer_G, optimizer_D,
-          generator, discriminator, dataloader_train, dataloader_test, loss_filename):
+          generator, discriminator, dataloader_train, dataloader_test,
+                          loss_filename, evolution_loss_filename):
 
-    #n_epochs = 1
     iteration = 0
 
     print("n_epochs", n_epochs)
@@ -74,36 +64,37 @@ def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
     discriminator.train()
     generator.train()
 
+    gen_checkpoint_filename_prev = None
+    det_checkpoint_filename_prev = None
+
     for epoch in range(n_epochs):
 
         print("epoch", epoch)
 
-        d_loss_avg, g_loss_avg = validation(batch_size, real_label, num_classes, adversarial_loss, device,
+        d_loss_avg, g_loss_avg = validation(batch_size, real_label,
+                                            num_classes, adversarial_loss, device,
                generator, discriminator, dataloader_test)
 
-        ############################3333
+        real_batch = next(iter(dataloader_test))
+        real_imgs = real_batch[0]
+        real_labels = real_batch[1]
+
+        with torch.no_grad():
+            fake = generator(fixed_noise, fixed_labels).detach().cpu()
 
         loss_filename_full = os.path.join("logs", loss_filename)
-
-
         with open(loss_filename_full, "a") as f_write_loss:
-
-                loss_str = f"{epoch}, {d_loss_avg.item()}, {g_loss_avg.item()}\n"
-
+                loss_str = f"{epoch}, {d_loss_avg}, {g_loss_avg}\n"
                 f_write_loss.write(loss_str)
 
-        #print(
-        #    "[Epoch: %d/%d] [Batch: %d/%d] [D loss: %f] [G loss: %f]"
-        #    % (epoch + 1, n_epochs, i + 1, len(dataloader), d_loss.item(), g_loss.item())
-        #)
-
-        #################################
+        discriminator.train()
+        generator.train()
 
         for i, (imgs, label_num) in enumerate(dataloader_train, 0):
 
             iteration += 1
 
-            print(f"iteration {i} / {len(dataloader_train)}")
+            #print(f"iteration {i} / {len(dataloader_train)}")
 
             real_imgs = imgs.to(device)
             labels = label_num.to(device)
@@ -123,8 +114,6 @@ def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
             real_loss = adversarial_loss(real_output, label)
             real_loss.backward()
 
-            D_real = real_output.mean().item()
-
             noise = torch.randn(batch_size, latent_dim, 1, 1, device=device)
 
             fake_imgs = generator(noise, fake_labels)
@@ -134,11 +123,10 @@ def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
             fake_loss = adversarial_loss(fake_output, label)
 
             fake_loss.backward()
-            D_fake = fake_output.mean().item()
 
-            d_loss = (real_loss + fake_loss) / 2
+            if (iteration%1 ==0):
 
-            optimizer_D.step()
+                optimizer_D.step()
 
             # ------------
             # Train Generator
@@ -149,18 +137,38 @@ def train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
 
             g_loss = adversarial_loss(fake_output, label)
             g_loss.backward()
-            D_G_fake = fake_output.mean().item()
+
             optimizer_G.step()
 
-            if ((iteration + 1) % 500) == 0:
+            loss_filename_full = os.path.join("logs", evolution_loss_filename)
+            with open(loss_filename_full, "a") as f_write_loss:
+                loss_str = f"{iteration}, {fake_loss.item()}, {g_loss.item()}\n"
+                f_write_loss.write(loss_str)
 
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                      % (epoch, n_epochs, i, len(dataloader),
-                         d_loss.item(), g_loss.item(), D_real, D_fake, D_G_fake))
+        # ------------
+        # Writing checkpoint
+        # ------------
+        if (epoch % 5 == 0):
 
+            fname = "logs/results_conditional_gan/dataset_im_epoch" + str(epoch) + ".png"
+            plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
+
+            gen_checkpoint_filename = f"logs/cond_generator.epoch_{epoch}.pth"
+            det_checkpoint_filename = f"logs/cond_discriminator.epoch_{epoch}.pth"
+
+            torch.save(generator.state_dict(), gen_checkpoint_filename)
+
+            if gen_checkpoint_filename_prev is not None:
+                os.remove(gen_checkpoint_filename_prev)
+            gen_checkpoint_filename_prev = gen_checkpoint_filename
+
+            torch.save(discriminator.state_dict(), det_checkpoint_filename)
+
+            if det_checkpoint_filename_prev is not None:
+                os.remove(det_checkpoint_filename_prev)
+            det_checkpoint_filename_prev = det_checkpoint_filename
 
     return generator, discriminator
-
 
 if __name__ == '__main__':
 
@@ -174,6 +182,7 @@ if __name__ == '__main__':
     batch_size = 64
 
     batch_size = 64
+
     b1 = 0.9
     b2 = 0.999
     lr = 0.0002
@@ -182,10 +191,8 @@ if __name__ == '__main__':
     fake_label = 0
     num_samples_per_class = 5000
 
-    path_generator = os.path.join("models", 'generator.pth')
-    path_discriminator = os.path.join("models", 'discriminator.pth')
-
     loss_filename = "loss_conditional_gan.txt"
+    evolution_loss_filename = "evolution_loss_conditional_gan.txt"
 
     ngpu = 1
     device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
@@ -221,7 +228,6 @@ if __name__ == '__main__':
     # ------------
     # Download MNIST train and test dataset from PyTorch
     # ------------
-
     transform = transforms.Compose([
         transforms.Resize(image_size),
         transforms.ToTensor(),
@@ -237,8 +243,11 @@ if __name__ == '__main__':
     dataloader_train = DataLoader( train_dataset, batch_size=batch_size, shuffle=True, drop_last = True)
     dataloader_test = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
-    optimizer_G = torch.optim.Adam(generator.parameters(), lr = lr, betas = (b1, b2))
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr = lr, betas = (b1, b2))
+    optimizer_D = torch.optim.SGD(discriminator.parameters(), lr=lr, momentum=0.9)
+    optimizer_G = torch.optim.SGD(generator.parameters(), lr=lr, momentum=0.9)
+
+    #optimizer_G = torch.optim.Adam(generator.parameters(), lr = lr, betas = (b1, b2))
+    #optimizer_D = torch.optim.Adam(discriminator.parameters(), lr = lr, betas = (b1, b2))
 
     fixed_noise = torch.randn(batch_size, latent_dim, 1, 1, device=device)
     fixed_labels = torch.randint(0, num_classes, (batch_size,), device=device)
@@ -253,7 +262,7 @@ if __name__ == '__main__':
     with torch.no_grad():
         fake = generator(fixed_noise, fixed_labels).detach().cpu()
 
-    fname = "../results_conditional_gan/dataset_im_start.png"
+    fname = "logs/results_conditional_gan/dataset_im_start.png"
 
     plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
 
@@ -265,37 +274,8 @@ if __name__ == '__main__':
     generator,  discriminator = \
             train_conditional_GAN(n_epochs, batch_size, real_label, num_classes,
             adversarial_loss, device, optimizer_G, optimizer_D,
-            generator, discriminator,  dataloader_train, dataloader_test, loss_filename)
-
-    torch.save(generator.state_dict(), path_generator)
-    torch.save(discriminator.state_dict(), path_discriminator)
-
-    #f_write_loss = open(loss_filename, "w")
-
-    #for ind, i  in enumerate(d_loss_arr):
-    #        loss_str = f"{ind}, {d_loss_arr[ind]}, {g_loss_arr[ind]}\n"
-    #        f_write_loss.write(loss_str)
-    #f_write_loss.close()
-
-    # --------
-    # plot learning curves
-    # --------
-    #d_loss_arr = np.array(d_loss_arr)
-    #g_loss_arr = np.array(g_loss_arr)
-    #g_loss_arr_1 = - np.log(1 - np.exp(-g_loss_arr))
-
-    #plt.figure(figsize=(10, 5))
-    #plt.title("Generator and Discriminator Loss During Training")
-    #plt.plot(g_loss_arr_1, label="G")
-    #plt.plot(d_loss_arr, label="D")
-    #plt.xlabel("iterations")
-    #plt.ylabel("Loss")
-    #plt.grid(True)  # Add grid lines
-    #plt.legend()
-
-    #plt.savefig("../results_conditional_gan/loss.png")
-    #plt.show()
-
+            generator, discriminator,  dataloader_train, dataloader_test,
+                                  loss_filename, evolution_loss_filename)
     # --------
     # Plot trained generator output
     # --------
@@ -306,26 +286,10 @@ if __name__ == '__main__':
     with torch.no_grad():
         fake = generator(fixed_noise, fixed_labels).detach().cpu()
 
-    fname = "../results_conditional_gan/dataset_im_fin.png"
+    fname = "logs/results_conditional_gan/dataset_im_fin.png"
     plot_results(fname, real_imgs, real_labels, fake, fixed_labels)
 
-    # --------
-    # Ganerate fake dataset using trained generator
-    # --------
 
-    #generated_labels, generated_samples = \
-    #    generate_train_fake(device, generator, num_classes, latent_dim, num_samples_per_class)
-
-    # --------
-    # Calculate accuracy of KNN classifier with trained generator
-    # --------
-
-    #accuracy_generated \
-    #    = Classifier(real_test_labels, real_test_images, generated_labels, generated_samples, num_classes)
-
-    #print(f"Error rate using trained generator dataset = {100*(1- accuracy_generated):.2f}%")
-
-    #arithmetics(generator, latent_dim, device, 5, 4)
 
 
 
