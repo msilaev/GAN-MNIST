@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     real_label = 1
     fake_label = 0
-    num_samples_per_class = 5000
+    num_samples_per_class = 6000
 
     path_generator = os.path.join(args.logs, args.checkpoint)
 

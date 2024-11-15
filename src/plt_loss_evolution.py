@@ -45,24 +45,27 @@ def main():
 
     plt.figure()
 
-    plt.figure(figsize=(10, 4))  # Adjust width and height as needed
+    plt.figure(figsize=(5, 5))  # Adjust width and height as needed
 
     # Set font sizes globally
-    plt.rcParams.update({'font.size': 14})  # General font size
-    plt.rcParams.update({'axes.titlesize': 18})  # Title font size
-    plt.rcParams.update({'axes.labelsize': 16})  # X and Y label font size
-    plt.rcParams.update({'legend.fontsize': 14})  # Legend font size
-    plt.rcParams.update({'xtick.labelsize': 14})  # X tick label font size
-    plt.rcParams.update({'ytick.labelsize': 14})  # Y tick label font size
+    plt.rcParams.update({'font.size': 20})  # General font size
+    plt.rcParams.update({'axes.titlesize': 20})  # Title font size
+    plt.rcParams.update({'axes.labelsize': 20})  # X and Y label font size
+    plt.rcParams.update({'legend.fontsize': 20})  # Legend font size
+    plt.rcParams.update({'xtick.labelsize': 20})  # X tick label font size
+    plt.rcParams.update({'ytick.labelsize': 20})  # Y tick label font size
 
-    plt.plot(epoch_arr, d_loss_arr, color = "orange",  label = "discriminator")
-    plt.plot(epoch_arr, g_loss_arr, color="blue",  label = "generator")
+    plt.plot(epoch_arr/1000, d_loss_arr, color = "orange",  label = "Discr")
+    plt.plot(epoch_arr/1000, g_loss_arr, color="blue",  label = "Gen")
     plt.legend()
     plt.grid()
-    plt.xlabel("Iteration")
+    plt.xlabel("Iteration/1000")
     plt.ylabel("<Adv Loss>_50")
     plt.ylim([0,5])
+    plt.xlim([0, 100])
     plt.tight_layout()
+
+    #plt.show()
 
     if args.type_gan == "conditional":
         figname = os.path.join(args.logs, "results_conditional_gan", args.fname + ".png")

@@ -21,7 +21,7 @@ def main():
         for line in f:
             epoch, d_loss, g_loss = line.split(",")
             epoch_arr.append(float(epoch))
-            d_loss_arr.append(float(d_loss)/2)
+            d_loss_arr.append(float(d_loss))
             g_loss_arr.append(float(g_loss))
 
     d_loss_arr = np.array(d_loss_arr)
@@ -32,22 +32,24 @@ def main():
 
     plt.figure()
 
-    plt.figure(figsize=(10, 4))  # Adjust width and height as needed
+    plt.figure(figsize=(5, 5))  # Adjust width and height as needed
 
     # Set font sizes globally
-    plt.rcParams.update({'font.size': 14})  # General font size
-    plt.rcParams.update({'axes.titlesize': 18})  # Title font size
-    plt.rcParams.update({'axes.labelsize': 16})  # X and Y label font size
-    plt.rcParams.update({'legend.fontsize': 14})  # Legend font size
-    plt.rcParams.update({'xtick.labelsize': 14})  # X tick label font size
-    plt.rcParams.update({'ytick.labelsize': 14})  # Y tick label font size
+    plt.rcParams.update({'font.size': 20})  # General font size
+    plt.rcParams.update({'axes.titlesize': 20})  # Title font size
+    plt.rcParams.update({'axes.labelsize': 20})  # X and Y label font size
+    plt.rcParams.update({'legend.fontsize': 20})  # Legend font size
+    plt.rcParams.update({'xtick.labelsize': 20})  # X tick label font size
+    plt.rcParams.update({'ytick.labelsize': 20})  # Y tick label font size
 
-    plt.plot(epoch_arr, d_loss_arr, color = "orange", marker = "+", label = "discriminator")
-    plt.plot(epoch_arr, g_loss_arr, color="blue", marker="o", label = "generator")
+    plt.plot(epoch_arr, d_loss_arr, color = "orange", marker = "+", label = "Discr")
+    plt.plot(epoch_arr, g_loss_arr, color="blue", marker="o", label = "Gen")
     plt.legend()
     plt.grid()
     plt.xlabel("Epoch")
     plt.ylabel("Adv Loss")
+    plt.ylim([0,5])
+    plt.xlim([0, 100])
     plt.tight_layout()
 
 

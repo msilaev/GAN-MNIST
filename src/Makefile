@@ -15,6 +15,8 @@ run_classification:
 	 python3 classificationFakeDS.py \
         --checkpoint cond_generator.epoch_95.pth \
         --logs logs_sgd
+#        --logs logs_adam_09
+#        --logs logs_sgd
 
 # -------------------
 # plot loss function
@@ -25,29 +27,49 @@ run_plt_loss:
 	python3 plt_loss.py \
         --fname loss_conditional_gan \
         --type_gan conditional \
+        --logs logs_sgd
+
+#run_plt_loss_evolution_conditional:
+	python3 plt_loss_evolution.py \
+        --fname evolution_loss_conditional_gan \
+        --type_gan conditional \
+        --logs logs_sgd
+
+#run_plt_loss_unconditional:
+	python3 plt_loss.py \
+        --fname loss_unconditional_gan \
+        --type_gan unconditional \
+        --logs logs_sgd
+
+#run_plt_loss_evolution_unconditional:
+	python3 plt_loss_evolution.py \
+        --fname evolution_loss_unconditional_gan \
+        --type_gan unconditional \
+        --logs logs_sgd
+
+	python3 plt_loss.py \
+        --fname loss_conditional_gan \
+        --type_gan conditional \
         --logs logs_adam_05
-        #logs_sgd
 
 #run_plt_loss_evolution_conditional:
 	python3 plt_loss_evolution.py \
         --fname evolution_loss_conditional_gan \
         --type_gan conditional \
         --logs logs_adam_05
-        #logs_sgd
+        #--logs logs_sgd
 
 #run_plt_loss_unconditional:
 	python3 plt_loss.py \
         --fname loss_unconditional_gan \
         --type_gan unconditional \
         --logs logs_adam_05
-        #logs_sgd
 
 #run_plt_loss_evolution_unconditional:
 	python3 plt_loss_evolution.py \
         --fname evolution_loss_unconditional_gan \
         --type_gan unconditional \
         --logs logs_adam_05
-        #logs_sgd
 
 run_plt_transition_numbers:
 	python3 transitionNumbers.py \
