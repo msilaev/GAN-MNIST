@@ -1,6 +1,12 @@
 .log
 
+.csv
+
+.png
+
 node_modules/
+
+src/data/
 
 *.pyc
 
@@ -12,7 +18,6 @@ venv/
 .venv/
 
 env/
-
 
 conda_env/
 .conda/
