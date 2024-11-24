@@ -66,4 +66,7 @@ then accuracy is calculated on the real dataset.
 
 ### Examples of training curves and generated images
 
-![DCGAN examples](images/GANMNISTexamples.png)
+Here are some examples of generated MNIST digits:
+
+<img src="images/GANMNISTexamples.png" alt="DCGAN examples" width="400">
+
