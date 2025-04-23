@@ -55,10 +55,22 @@ put in the folder `./data`.
 To train the usual and conditional GAN launch the corresponding commands
 
 ```
-make run_training_unconditional_gan
-make run_training_conditional_gan
-make run_classification
-make run_plt_loss
+./run_cond_gan.sh
+```
+or
+```
+./run_cond_gan.bat
+```
+
+To run training through AWS Sagemaker SDK  put credentials in `.env` file. 
+To run Sagemaker locally launch Docker and implement
+
+```
+python sagemaker_job.py
+```
+To run it on the cloud implement
+```
+./run_cond_gan.bat
 ```
 
 In case of the conditional GAN the KNN classifier is trained on the generated fake dataset and 
